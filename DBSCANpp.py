@@ -1,82 +1,104 @@
 import numpy as np
-import pandas as pd
 import random
-import matplotlib.pyplot as plt
+import math
 from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.datasets import make_blobs
+import pandas as pd
 
-#https://becominghuman.ai/dbscan-clustering-algorithm-implementation-from-scratch-python-9950af5eed97
-def check_core(eps,minPoints,df,index):
-    temp=df[1-euclidean_distances(df, df.to_numpy()[index,None])<=eps]
-    if len(temp)>=minPoints:
-        return (temp.index,"core")
-    elif len(temp)<minPoints and len(temp)>0:
-        return (temp.index,"border")
-    else:
-        return (temp.index,"noise")
+class DBSCANPP:
+    """
+    Parameters
+    ----------
+    
+    p: fraction fo dataset being used for samples
+    eps: min radius for finding minPts
+    minPts: minpoints in radius to be for a point to be core
+    """
 
-def DBSCAN(eps,minPoints,df,points):
-    C=1
-    PoI=[] #points that are neighbors to core points
-    visited=[]
-    remaining=points
-    clusters={}
-    madeClust=False
-    while len(remaining)!=0:
-        first=True
-        x=random.choice(remaining)
-        PoI.add(x)
-        visited.append(x)
-        while len(PoI)!=0:
-            index=random.choice(PoI)
-            visited.append(index)
-            PoI.remove(index)
-            neighbors,cat=check_core(eps,minPoints,df,index)
-            if cat=="core":
-                madeClust=True 
+    def __init__(self, eps, minPts):
+        self.eps=eps
+        self.minPts = minPts
+    
+
+    def fit_predict(self, data, pointType="uniform",n=10):
+        x, y = data.shape
+        if pointType=="uniform":
+            step = int(x/y)
+            points=list(np.array(data.index)[0::step])
+        if pointType=="knn":
+            points=self.k_center(n,data,x,y)
+        clustered = self.DBSCAN(data, points)
+        return clustered
+
+    def check_core(self,df,index):
+        eps=self.eps
+        minPoints=self.minPts
+
+        temp=df[abs(euclidean_distances(df, df.to_numpy()[index,None]))<=eps]
+        if len(temp)>=minPoints+1:
+            return (temp.index,"core")
+        elif len(temp)<minPoints+1 and len(temp)>0:
+            return (temp.index,"border")
+        else:
+            return (temp.index,"noise")
+
+    def DBSCAN(self,df,points):
+        C=1
+        toDo=set()
+        unclaimed=list(df.index)
+        clusters=[]
+        while len(points)!=0:
+            clusterCreated=False
+            toDo.add(random.choice(points))
+            while len(toDo)!=0:
+                idx=toDo.pop()
                 try:
-                   clusters[C]=clusters[C].append(index)
+                    points.remove(idx)
                 except:
-                    clusters[C]=[index]
-                PoI.extend(neighbors)
-            elif cat=="border":
-                try:
-                   clusters[C]=clusters[C].append(index)
-                except:
-                    clusters[C]=[index]
-            else:
-                try:
-                   clusters[0]=clusters[0].append(index)
-                except:
-                    clusters[0]=[index]
+                    pass
+                neigh,typ=self.check_core(df,idx)
+
+
+                if typ=="core":
+                    clusterCreated=True
+                    clusters.append((C,idx))
+                    unclaimed.remove(idx)
+                    neigh=neigh.intersection(set(unclaimed))
+                    toDo.update(neigh)
+
+
+                elif typ=="border" and clusterCreated==True:
+                    clusters.append((C,idx))
+                    unclaimed.remove(idx)
+                    neigh=neigh.intersection(set(unclaimed))
+                    toDo.update(neigh)
+
+            if clusterCreated==True:
+                C=C+1
+        for i in unclaimed:
+            clusters.append((0,i))
+        return clusters
+    
+    def k_center(self,n,df,x,y):
+        indices=[]
+        distances=np.empty(x)
+        for i,j in df.iterrows():
+            distances[i]=np.sum(euclidean_distances(df, df.to_numpy()[i,None]))
+        indices.append(np.argmin(distances))
+        for k in range(n-1):
+            distances=np.zeros(n)
+            for i in range(len(indices)):
+                distances[i]=np.sum(euclidean_distances(df, df.to_numpy()[indices[i],None]))+distances[i]
+            index=np.argmax(distances)            
+            adjust=np.count_nonzero(indices<=index)
+            testInd=[]
+            while index+adjust in indices:
+                testInd.append(index)
+                distances=np.delete(distances,index)
+                index=np.argmax(distances)
+                adjust=np.count_nonzero(indices<=index)+np.count_nonzero(testInd<=index)
+
+            indices.append(index+adjust)
+        return indices
+
+
         
-        if madeClust==True:
-            C=C+1
-            madeClust=False
-    return clusters
-
-
-centers = [(0, 4), (5, 5) , (8,2)]
-cluster_std = [1.2, 1, 1.1]
-
-X, y= make_blobs(n_samples=200, cluster_std=cluster_std, centers=centers, n_features=2, random_state=1)
-#radius of the circle defined as 0.6
-eps = 0.6
-#minimum neighbouring points set to 3
-minPts = 3
-
-data = pd.DataFrame(X, columns = ["X", "Y"] )
-points=list(data.index)
-clustered = DBSCAN(eps, minPts, data, points)
-
-idx , cluster = list(zip(*clustered))
-cluster_df = pd.DataFrame(clustered, columns = ["idx", "cluster"])
-
-plt.figure(figsize=(10,7))
-for clust in np.unique(cluster):
-    plt.scatter(X[cluster_df["idx"][cluster_df["cluster"] == clust].values, 0], X[cluster_df["idx"][cluster_df["cluster"] == clust].values, 1], s=10, label=f"Cluster{clust}")
-
-plt.legend([f"Cluster {clust}" for clust in np.unique(cluster)], loc ="lower right")
-plt.title('Clustered Data')
-plt.xlabel('X')
-plt.ylabel('Y')
