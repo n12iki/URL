@@ -1,30 +1,29 @@
+from sklearn.cluster import DBSCAN
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_blobs, make_moons
-from DBSCANpp import DBSCANPP
-import numpy as np
 from sklearn import metrics
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 import time
 
-def test(data,epsList,minPtsList,initPoints): #this function runs the DBSCAN++ and will return the best config and the best scores.
-    best=[0,0]
+def test(data,epsList,minPtsList):
     bestScore=[float('-inf'),float('-inf'),float('-inf')]
+    best=[0,0]
     timeList=[]
     for epsV in epsList:
         for minPts in minPtsList:
-            scan=DBSCANPP(epsV, minPts) #initilize the class
             start_time = time.time()
-            clustered=scan.fit_predict(data,n=initPoints,pointType="knn") #test config with knn point initilizing, uniform is also possible
+            clustering = DBSCAN(eps=epsV, min_samples=minPts,metric="euclidean").fit(data)
             timeList.append(time.time()-start_time)
-            cluster_df = pd.DataFrame(clustered, columns = ["cluster", "idx"])
-            cluster_df=cluster_df.sort_values("idx")
+            cluster = clustering.labels_
+            data["cluster"]=cluster
             score=0
             try:
-                ars=metrics.adjusted_rand_score(cluster_df["cluster"], y)#closer to 1 is good
-                fms=metrics.fowlkes_mallows_score(cluster_df["cluster"], y)#closer 1 is good
-                chs=metrics.calinski_harabasz_score(np.array(data), np.array(cluster_df["cluster"]))#higher is better
+                ars=metrics.adjusted_rand_score(data["cluster"], y)#closer to 1 is good
+                fms=metrics.fowlkes_mallows_score(data["cluster"], y)#closer 1 is good
+                chs=metrics.calinski_harabasz_score(np.array(data), np.array(data["cluster"]))#higher is better
 
                 if ars>bestScore[0]:
                     score=score+1
@@ -35,11 +34,14 @@ def test(data,epsList,minPtsList,initPoints): #this function runs the DBSCAN++ a
                 if score>=2:
                     best=[epsV,minPts]
                     bestScore=[ars,fms,chs]
+                    print(set(data["cluster"]))
+                    print(len(set(data["cluster"])))
             except:
                 pass
+
     return [best,bestScore,sum(timeList)/float(len(timeList))]
 
-def convertData(df): #this function converts normalizes and one hot encodes the dataset
+def convertData(df):
     label_encoder = LabelEncoder()
     count=0
     temp=df
@@ -68,26 +70,23 @@ def convertData(df): #this function converts normalizes and one hot encodes the 
 
 
 
-### Create Blob data set
+
 centers = [(0, 4), (5, 5) , (8,2)]
 cluster_std = [1.2, 1, 1.1]
 
 X, y= make_blobs(n_samples=200, cluster_std=cluster_std, centers=centers, n_features=2, random_state=1)
-eps = .7
-minPts = 3
-
 data = pd.DataFrame(X, columns = ["X", "Y"] )
-scan=DBSCANPP(eps, minPts) #initilize the DBSCAN class
+#clustered=scan.fit_predict(data,n=40,pointType="knn")
 start_time = time.time()
-clustered=scan.fit_predict(data,n=40,pointType="knn") #clusterize the data
+clustering = DBSCAN(eps=.7, min_samples=3,metric="euclidean").fit(data)
 print("time")
 print(time.time()-start_time)
-cluster,idx = list(zip(*clustered))
-cluster_df = pd.DataFrame(clustered, columns = ["cluster", "idx"])
-cluster_df=cluster_df.sort_values("idx")
+cluster = clustering.labels_
+data["idx"]=cluster
+#cluster_df = pd.DataFrame(clustering, columns = ["cluster", "idx"])
 plt.figure(figsize=(10,7))
 for clust in np.unique(cluster):
-    plt.scatter(X[cluster_df["idx"][cluster_df["cluster"] == clust].values, 0], X[cluster_df["idx"][cluster_df["cluster"] == clust].values, 1], s=10, label=f"Cluster{clust}")
+    plt.scatter(X[data["idx"] == clust, 0], X[data["idx"]== clust, 1], s=10, label=f"Cluster{clust}")
 
 plt.legend([f"Cluster {clust}" for clust in np.unique(cluster)], loc ="lower right")
 plt.title('Clustered Data')
@@ -96,63 +95,57 @@ plt.ylabel('Y')
 plt.show()
 print("Blobs:")
 print("adjusted_rand_score:")
-print(metrics.adjusted_rand_score(cluster_df["cluster"], y))
+print(metrics.adjusted_rand_score(data["idx"], y))
 print("fowlkes_mallows_score:")
-print(metrics.fowlkes_mallows_score(cluster_df["cluster"], y))
+print(metrics.fowlkes_mallows_score(data["idx"], y))
 print("calinski_harabasz_score")
-print(metrics.calinski_harabasz_score(np.array(data["X"]).reshape(-1,1), np.array(cluster_df["cluster"])))
+print(metrics.calinski_harabasz_score(np.array(data["X"]).reshape(-1,1), np.array(data["idx"])))
+print("\n\n\n")
 
-###_______________________________________
-###Make the moon dataset
 X, y= make_moons(n_samples=500,shuffle=True, noise=.15, random_state=1)
 data = pd.DataFrame(X, columns = ["X", "Y"] )
-eps = .13
-minPts = 3
+#radius of the circle defined as 0.6
 start_time = time.time()
-scan=DBSCANPP(eps, minPts)#initilize class
-clustered=scan.fit_predict(data,n=100,pointType="knn") #clusterize the dataset.
+clustering = DBSCAN(eps=.13, min_samples=3,metric="euclidean").fit(data)
 print("time")
 print(time.time()-start_time)
-cluster,idx = list(zip(*clustered))
-cluster_df = pd.DataFrame(clustered, columns = ["cluster", "idx"])
-cluster_df=cluster_df.sort_values("idx")
-
+cluster = clustering.labels_
+data["idx"]=cluster
+#cluster_df = pd.DataFrame(clustering, columns = ["cluster", "idx"])
 plt.figure(figsize=(10,7))
+
 for clust in np.unique(cluster):
-    plt.scatter(X[cluster_df["idx"][cluster_df["cluster"] == clust].values, 0], X[cluster_df["idx"][cluster_df["cluster"] == clust].values, 1], s=10, label=f"Cluster{clust}")
+    plt.scatter(X[data["idx"] == clust, 0], X[data["idx"]== clust, 1], s=10, label=f"Cluster{clust}")
 
 plt.legend([f"Cluster {clust}" for clust in np.unique(cluster)], loc ="lower right")
 plt.title('Clustered Data')
 plt.xlabel('X')
 plt.ylabel('Y')
 plt.show()
-print("\n\n")
 print("Moons:")
 print("adjusted_rand_score:")
-print(metrics.adjusted_rand_score(cluster_df["cluster"], y))
+print(metrics.adjusted_rand_score(data["idx"], y))
 print("fowlkes_mallows_score:")
-print(metrics.fowlkes_mallows_score(cluster_df["cluster"], y))
+print(metrics.fowlkes_mallows_score(data["idx"], y))
 print("calinski_harabasz_score")
-print(metrics.calinski_harabasz_score(np.array(data["X"]).reshape(-1,1), np.array(cluster_df["cluster"])))
-
-
-
-####################################
-#the Iris dataset
-###################################
+print(metrics.calinski_harabasz_score(np.array(data["X"]).reshape(-1,1), np.array(data["idx"])))
+print("\n\n\n")
 dataset="iris"
-print("\n\n")
-print(dataset)
+#radius of the circle defined as 0.6
+eps = np.arange(0, .5, 0.05, dtype=float)
+#minimum neighbouring points set to 3
 data=pd.read_csv(dataset+'.csv', sep=',',header=None)
 y=data[4]
 data=data.drop([4],axis=1)
 data=convertData(data)
+data.columns = data.columns.astype(str)
+print("iris")
 
-epsList = np.arange(.01, .10, 0.01, dtype=float) #range of core radius tested
-minPtsList = [2,3,5,7,10] #list of min points
-scores=["adjusted rand score","fowlkes mallows score","calinski harabasz score"]
+epsList = np.arange(.01, .10, 0.01, dtype=float)
+minPtsList = [2,3,5,7,10]
 
-results=test(data,epsList,minPtsList,10) #start testing the different configs with the dataset
+
+results=test(data,epsList,minPtsList)
 best=results[0]
 bestScore=results[1]
 avgTime=results[2]
@@ -165,57 +158,59 @@ for i in range(len(bestScore)):
 print("\n\n\n")
 
 
-##########################
-###the pima diabetes dataset
-###################################
+
+
 dataset="pima_diabetes"
-print("\n\n")
-print(dataset)
 data=pd.read_csv(dataset+'.csv', sep=',',header=None)
 y=data[8]
 data=data.drop([8],axis=1)
 data=convertData(data)
-epsList = np.arange(.001, .2, 0.001, dtype=float) #core distance measured
-minPtsList = [2,3,5,7] #min amount of points
-results=test(data,epsList,minPtsList,10) #testing configs
+data.columns = data.columns.astype(str)
+print("pima")
+
+epsList = np.arange(.1, .6, 0.05, dtype=float)
+minPtsList = [2,3,5,7]
+best=[0,0]
+scores=["adjusted rand score","fowlkes mallows score","calinski harabasz score"]
+results=test(data,epsList,minPtsList)
 best=results[0]
 bestScore=results[1]
 avgTime=results[2]
 print("time: "+str(avgTime))
 print(best)
-scores=["adjusted rand score","fowlkes mallows score","calinski harabasz score"]
 for i in range(len(bestScore)):
     print(scores[i])
     print(bestScore[i])
 print("\n\n\n")
 
 
-############################
-#FIre Dataset
-###########################
+
+
+
+
 dataset="Fire"
-print("\n\n")
-print(dataset)
 data=pd.read_csv(dataset+'.csv', sep=',',header=None)
+print("Fire")
 y=data[6]
 data=data.drop([6],axis=1)
 data=convertData(data)
-scores=["adjusted rand score","fowlkes mallows score","calinski harabasz score"]
+data.columns = data.columns.astype(str)
 
-epsList = np.arange(.01, .25, 0.01, dtype=float)#list of core radiuses
-minPtsList = [5,7,8,9,10] #min points
-results=test(data,epsList,minPtsList,500) #test configs
+
+epsList = np.arange(.01, .25, 0.01, dtype=float)
+minPtsList = [2,3,5,7]
+best=[0,0]
+scores=["adjusted rand score","fowlkes mallows score","calinski harabasz score"]
+results=test(data,epsList,minPtsList)
 best=results[0]
 bestScore=results[1]
 avgTime=results[2]
 print("time: "+str(avgTime))
 print(best)
-scores=["adjusted rand score","fowlkes mallows score","calinski harabasz score"]
 for i in range(len(bestScore)):
     print(scores[i])
     print(bestScore[i])
 print("\n\n\n")
-
 
 
 
